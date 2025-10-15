@@ -38,7 +38,9 @@ async def upload_resume(file: UploadFile = File(...), job_description: str = For
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF parsing failed: {e}")
 
-    parsed = parse_resume_text(text)
+    # This is now async - add await
+    parsed = await parse_resume_text(text)
+    
     doc = {
         "filename": file.filename,
         "text": text,

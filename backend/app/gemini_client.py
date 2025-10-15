@@ -11,7 +11,45 @@ GEMINI_ENDPOINT = os.getenv(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 )
 
-PROMPT_TEMPLATE = """
+# New prompt for resume parsing
+PARSE_PROMPT_TEMPLATE = """
+You are an expert resume parser. Extract the following information from the resume text in STRUCTURED JSON format:
+
+{
+  "name": "full name",
+  "email": "email address",
+  "phone": "phone number",
+  "skills": ["list of technical skills", "programming languages", "tools"],
+  "education": [
+    {
+      "degree": "degree name",
+      "institution": "institution name", 
+      "year": "graduation year"
+    }
+  ],
+  "experience": [
+    {
+      "title": "job title",
+      "company": "company name",
+      "from_date": "start date",
+      "to_date": "end date"
+    }
+  ],
+  "total_experience_years": "total years of experience"
+}
+
+Rules:
+- Extract ALL technical skills mentioned, don't limit to common ones
+- For experience dates, use the format you find (MM/YYYY, Month YYYY, etc.)
+- Calculate total_experience_years by summing all experience periods
+- Return only valid JSON, no other text
+
+Resume Text:
+{resume_text}
+"""
+
+# Existing scoring prompt (keep this)
+SCORE_PROMPT_TEMPLATE = """
 You are an expert AI recruiter. Compare the candidate's resume and the given job description.
 Evaluate based on **skills, education, experience, and project relevance**.
 
@@ -33,12 +71,59 @@ Job Description:
 {job_description}
 """
 
-async def score_resume_with_gemini(parsed_resume: dict, job_description: str) -> dict:
-    """
-    Sends parsed resume + job description to Gemini API and returns a structured score.
-    Falls back to keyword-based scoring if Gemini fails or key not found.
-    """
+async def parse_resume_with_gemini(text: str) -> dict:
+    """Parse resume text using Gemini AI"""
     if not GEMINI_API_KEY:
+        raise Exception("Gemini API key not configured for parsing")
+    
+    prompt = PARSE_PROMPT_TEMPLATE.format(resume_text=text)
+    
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ]
+    }
+
+    headers = {"Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # FIX: Use params instead of appending to URL to avoid duplicate ?key=
+            resp = await client.post(
+                GEMINI_ENDPOINT,
+                headers=headers,
+                json=payload,
+                params={"key": GEMINI_API_KEY}  # This is the fix
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        text_output = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        
+        # Clean the response - remove markdown code blocks if present
+        text_output = text_output.replace("```json", "").replace("```", "").strip()
+        
+        try:
+            parsed = json.loads(text_output)
+            # Validate required fields
+            parsed.setdefault("skills", [])
+            parsed.setdefault("education", [])
+            parsed.setdefault("experience", [])
+            return parsed
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse Gemini response as JSON: {text_output}")
+            raise Exception(f"Gemini returned invalid JSON: {str(e)}")
+
+    except Exception as e:
+        print(f"Gemini parsing error: {e}")
+        raise
+
+async def score_resume_with_gemini(parsed_resume: dict, job_description: str) -> dict:
+    """Sends parsed resume + job description to Gemini API and returns a structured score."""
+    if not GEMINI_API_KEY:
+        # Fallback logic (keep existing)
         skills = set([s.lower() for s in parsed_resume.get("skills", [])])
         jd = job_description.lower().split()
         matched = [s for s in skills if s in jd]
@@ -51,7 +136,8 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
             "evidence": [],
             "raw_llm_response": None
         }
-    prompt = PROMPT_TEMPLATE.format(
+
+    prompt = SCORE_PROMPT_TEMPLATE.format(
         parsed_resume_json=json.dumps(parsed_resume, indent=2),
         job_description=job_description
     )
@@ -68,10 +154,12 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
     headers = {"Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
+            # FIX: Use params instead of appending to URL
             resp = await client.post(
-                f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}",
+                GEMINI_ENDPOINT,
                 headers=headers,
-                json=payload
+                json=payload,
+                params={"key": GEMINI_API_KEY}  # This is the fix
             )
             resp.raise_for_status()
             data = resp.json()
