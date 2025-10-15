@@ -1,19 +1,14 @@
 import streamlit as st
 import requests
 import json
-
-# FastAPI backend URL
 BACKEND_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="Smart Resume Screener", layout="wide")
 
 st.title("📄 Smart Resume Screener")
 st.markdown("### Upload your resume and get an instant AI-based screening score!")
-
-# File uploader
 uploaded_file = st.file_uploader("Upload your resume (PDF only)", type=["pdf"])
 
-# Job description
 job_description = st.text_area("Paste the Job Description here")
 
 if uploaded_file and job_description:

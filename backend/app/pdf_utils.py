@@ -1,4 +1,4 @@
-import fitz  # PyMuPDF
+import fitz 
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
     """Extract readable text from a PDF file."""

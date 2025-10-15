@@ -38,8 +38,6 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
     Sends parsed resume + job description to Gemini API and returns a structured score.
     Falls back to keyword-based scoring if Gemini fails or key not found.
     """
-
-    # 🧩 Fallback scoring if no key is present
     if not GEMINI_API_KEY:
         skills = set([s.lower() for s in parsed_resume.get("skills", [])])
         jd = job_description.lower().split()
@@ -53,8 +51,6 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
             "evidence": [],
             "raw_llm_response": None
         }
-
-    # 🧠 Build the prompt
     prompt = PROMPT_TEMPLATE.format(
         parsed_resume_json=json.dumps(parsed_resume, indent=2),
         job_description=job_description
@@ -70,8 +66,6 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
     }
 
     headers = {"Content-Type": "application/json"}
-
-    # ⚙️ Send request
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
@@ -82,12 +76,10 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
             resp.raise_for_status()
             data = resp.json()
 
-        # 🧩 Extract and parse Gemini output
         text_output = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
         try:
             parsed = json.loads(text_output)
         except Exception:
-            # fallback if Gemini gives text not in JSON
             parsed = {
                 "score": 0,
                 "justification": ["Invalid Gemini response format. Raw text received instead of JSON."],
@@ -97,7 +89,6 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
                 "raw_text": text_output
             }
 
-        # ensure all required fields exist
         for key in ["score", "justification", "matched_skills", "missing_skills", "evidence"]:
             parsed.setdefault(key, [] if key != "score" else 0)
 
@@ -105,7 +96,6 @@ async def score_resume_with_gemini(parsed_resume: dict, job_description: str) ->
         return parsed
 
     except Exception as e:
-        # 🔥 Fallback heuristic if Gemini API call fails
         jd_words = job_description.lower().split()
         resume_text = json.dumps(parsed_resume).lower()
         matched = [w for w in jd_words if w in resume_text]

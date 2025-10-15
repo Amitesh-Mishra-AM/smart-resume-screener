@@ -5,7 +5,6 @@ from rapidfuzz import fuzz
 
 nlp = spacy.load("en_core_web_sm")
 
-# Extended skill list
 BASE_SKILLS = [
     "python", "fastapi", "flask", "django", "nlp", "machine learning",
     "pytorch", "tensorflow", "scikit-learn", "sql", "mongodb", "docker", "aws",
@@ -33,14 +32,12 @@ def extract_phone(text: str) -> str:
     return None
 
 def extract_name(text: str) -> str:
-    # Try PERSON entities
     doc = nlp(text[:1000])
     for ent in doc.ents:
         if ent.label_ == "PERSON":
             name = ent.text.strip()
-            if len(name.split()) <= 4:  # avoid long phrases
+            if len(name.split()) <= 4:  
                 return name
-    # Fallback: first line without email/phone
     for line in text.splitlines():
         line = line.strip()
         if line and not re.search(r"[\d@]", line) and len(line.split()) <= 4:
@@ -54,9 +51,7 @@ def extract_education(text: str) -> List[Dict]:
         for pattern in EDU_PATTERNS:
             if re.search(pattern, line, re.IGNORECASE):
                 degree = line.strip()
-                # Try next line for institution
                 institution = lines[i + 1].strip() if i + 1 < len(lines) else None
-                # Try to extract year
                 year_match = re.search(r"(20\d{2}|19\d{2})", line)
                 year = year_match.group(0) if year_match else None
                 education.append({"degree": degree, "institution": institution, "year": year})
@@ -69,9 +64,7 @@ def extract_experience(text: str) -> List[Dict]:
     for i, line in enumerate(lines):
         if re.search(EXP_KEYWORDS, line, re.IGNORECASE):
             title = line.strip()
-            # Try next line for company name
             company = lines[i + 1].strip() if i + 1 < len(lines) else None
-            # Optional: extract dates
             from_date, to_date = None, None
             date_match = re.findall(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}", line)
             if len(date_match) >= 1:
@@ -88,7 +81,6 @@ def extract_skills(text: str, top_k=15) -> List[str]:
         if skill.lower() in text_lower:
             found.add(skill)
         else:
-            # fuzzy match
             for word in text_lower.split():
                 if fuzz.ratio(skill.lower(), word) > 85:
                     found.add(skill)

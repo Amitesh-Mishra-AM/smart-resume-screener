@@ -23,22 +23,6 @@ app.add_middleware(
 
 resumes_col = get_collection("resumes")
 
-# @app.post("/upload-resume")
-# async def upload_resume(file: UploadFile = File(...)):
-#     if not file.filename.lower().endswith(".pdf"):
-#         raise HTTPException(status_code=400, detail="Only PDF uploads accepted for now.")
-#     content = await file.read()
-#     text = extract_text_from_pdf_bytes(content)
-#     parsed = parse_resume_text(text)
-#     doc = {
-#         "filename": file.filename,
-#         "text": text,
-#         "parsed": parsed,
-#         "scores": []
-#     }
-#     res = await resumes_col.insert_one(doc)
-#     return {"id": str(res.inserted_id), "parsed": parsed}
-
 @app.post("/upload-resume")
 async def upload_resume(file: UploadFile = File(...), job_description: str = Form(...)):
     """Upload resume and job description together."""
@@ -69,7 +53,6 @@ async def upload_resume(file: UploadFile = File(...), job_description: str = For
     try:
         gemini_response = await score_resume_with_gemini(parsed, job_description)
 
-        # Normalize Gemini response
         score_result = {
             "score": gemini_response.get("score") or 0,
             "matched_skills": gemini_response.get("matched_skills", []),
@@ -80,7 +63,6 @@ async def upload_resume(file: UploadFile = File(...), job_description: str = For
         }
 
     except Exception as e:
-        # fallback scoring if Gemini fails
         jd_lower = job_description.lower()
         resume_lower = text.lower()
 
@@ -97,19 +79,6 @@ async def upload_resume(file: UploadFile = File(...), job_description: str = For
             "evidence": [],
             "error": f"Gemini scoring failed: {str(e)}"
         }
-        # jd_lower = job_description.lower()
-        # resume_lower = text.lower()
-        # matched = [word for word in jd_lower.split() if word in resume_lower]
-        # missing = [word for word in jd_lower.split() if word not in resume_lower]
-        # score_val = round(len(matched) / len(jd_lower.split()) * 100, 2)
-        # score_result = {
-        #     "score": score_val,
-        #     "matched_skills": matched,
-        #     "missing_skills": missing,
-        #     "justification": [f"Matched {len(matched)} / {len(jd_lower.split())} keywords."],
-        #     "evidence": [],
-        #     "error": f"Gemini scoring failed: {str(e)}"
-        # }
 
     await resumes_col.update_one(
         {"_id": ObjectId(resume_id)},
@@ -128,7 +97,6 @@ async def score_resume(resume_id: str, job_description: str, background_tasks: B
     if not doc:
         raise HTTPException(status_code=404, detail="Resume not found")
     parsed = doc.get("parsed")
-    # call Gemini in background to not block
     async def _do_score(rid, parsed_resume, job_desc):
         try:
             llm_resp = await score_resume_with_gemini(parsed_resume, job_desc)
@@ -145,7 +113,6 @@ async def score_resume(resume_id: str, job_description: str, background_tasks: B
                 {"$push": {"scores": score_result.dict()}}
             )
         except Exception as e:
-            # log error
             print("LLM scoring error:", e)
     background_tasks.add_task(_do_score, resume_id, parsed, job_description)
     return {"status": "scoring_started", "resume_id": resume_id}
