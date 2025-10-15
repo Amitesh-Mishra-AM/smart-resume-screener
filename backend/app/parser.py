@@ -1,75 +1,107 @@
 import re
-from typing import List
+from typing import List, Dict
 import spacy
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz
 
 nlp = spacy.load("en_core_web_sm")
 
-# minimal curated skills list; expand as needed
+# Extended skill list
 BASE_SKILLS = [
     "python", "fastapi", "flask", "django", "nlp", "machine learning",
     "pytorch", "tensorflow", "scikit-learn", "sql", "mongodb", "docker", "aws",
-    "keras", "linux", "git", "javascript", "react"
+    "keras", "linux", "git", "javascript", "react", "java", "c++", "c#", "html",
+    "css", "typescript", "node.js", "vue", "angular", "spark", "hadoop"
 ]
 
-def extract_contact_info(text: str):
-    email = None
-    phone = None
-    email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
-    if email_match:
-        email = email_match.group(0)
-    phone_match = re.search(r'(\+?\d{1,3}[\s-]?)?(\d{10}|\d{3}[\s-]\d{3}[\s-]\d{4})', text)
-    if phone_match:
-        phone = "".join(phone_match.groups()[:2]).strip() if phone_match.groups() else phone_match.group(0)
-    return email, phone
+EDU_PATTERNS = [
+    r"(Bachelor|B\.Tech|BTech|BSc|BA)", 
+    r"(Master|M\.Tech|MTech|MSc|MA|MBA)", 
+    r"(PhD|Doctorate)"
+]
 
-def extract_name(text: str):
-    # simple heuristic: first PERSON entity found near top of document
+EXP_KEYWORDS = r"\b(Engineer|Developer|Intern|Manager|Scientist|Analyst|Lead|Consultant|Specialist)\b"
+
+def extract_email(text: str) -> str:
+    matches = re.findall(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+    return matches[0] if matches else None
+
+def extract_phone(text: str) -> str:
+    matches = re.findall(r"(\+?\d{1,3}[\s-]?)?(\d{10}|\d{3}[\s-]\d{3}[\s-]\d{4})", text)
+    if matches:
+        phone = "".join(matches[0])
+        return phone.strip()
+    return None
+
+def extract_name(text: str) -> str:
+    # Try PERSON entities
     doc = nlp(text[:1000])
     for ent in doc.ents:
         if ent.label_ == "PERSON":
-            return ent.text
-    # fallback: first line
-    first_line = text.strip().splitlines()[0]
-    if len(first_line.split()) <= 4:
-        return first_line.strip()
+            name = ent.text.strip()
+            if len(name.split()) <= 4:  # avoid long phrases
+                return name
+    # Fallback: first line without email/phone
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not re.search(r"[\d@]", line) and len(line.split()) <= 4:
+            return line
     return None
 
-def extract_education(text: str):
-    edu_patterns = ["Bachelor", "B\\.Tech", "BTech", "Bachelors", "Master", "M\\.Tech", "MTech", "MBA", "PhD"]
-    educations = []
-    for line in text.splitlines():
-        for p in edu_patterns:
-            if re.search(p, line, re.IGNORECASE):
-                educations.append({"degree": line.strip(), "institution": None, "year": None})
+def extract_education(text: str) -> List[Dict]:
+    education = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        for pattern in EDU_PATTERNS:
+            if re.search(pattern, line, re.IGNORECASE):
+                degree = line.strip()
+                # Try next line for institution
+                institution = lines[i + 1].strip() if i + 1 < len(lines) else None
+                # Try to extract year
+                year_match = re.search(r"(20\d{2}|19\d{2})", line)
+                year = year_match.group(0) if year_match else None
+                education.append({"degree": degree, "institution": institution, "year": year})
                 break
-    return educations
+    return education
 
-def extract_experience(text: str):
-    # naive capture of lines with 'Engineer', 'Intern', 'Manager', etc.
-    exp_lines = []
-    for line in text.splitlines():
-        if re.search(r"\b(Engineer|Developer|Intern|Manager|Scientist|Analyst|Lead)\b", line, re.IGNORECASE):
-            exp_lines.append({"title": line.strip(), "company": None, "from_date": None, "to_date": None})
-    return exp_lines
+def extract_experience(text: str) -> List[Dict]:
+    experience = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if re.search(EXP_KEYWORDS, line, re.IGNORECASE):
+            title = line.strip()
+            # Try next line for company name
+            company = lines[i + 1].strip() if i + 1 < len(lines) else None
+            # Optional: extract dates
+            from_date, to_date = None, None
+            date_match = re.findall(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}", line)
+            if len(date_match) >= 1:
+                from_date = date_match[0]
+                if len(date_match) >= 2:
+                    to_date = date_match[1]
+            experience.append({"title": title, "company": company, "from_date": from_date, "to_date": to_date})
+    return experience
 
-def extract_skills(text: str, top_k=10) -> List[str]:
-    candidate = []
-    lowered = text.lower()
-    # simple search + fuzzy match for base skills
-    for s in BASE_SKILLS:
-        if s in lowered:
-            candidate.append(s)
-    # also fuzzy search for other candidate words (optional)
-    # return unique
-    return list(dict.fromkeys(candidate))[:top_k]
+def extract_skills(text: str, top_k=15) -> List[str]:
+    text_lower = text.lower()
+    found = set()
+    for skill in BASE_SKILLS:
+        if skill.lower() in text_lower:
+            found.add(skill)
+        else:
+            # fuzzy match
+            for word in text_lower.split():
+                if fuzz.ratio(skill.lower(), word) > 85:
+                    found.add(skill)
+    return list(found)[:top_k]
 
-def parse_resume_text(text: str):
+def parse_resume_text(text: str) -> Dict:
     name = extract_name(text)
-    email, phone = extract_contact_info(text)
+    email = extract_email(text)
+    phone = extract_phone(text)
     education = extract_education(text)
     experience = extract_experience(text)
     skills = extract_skills(text)
+
     parsed = {
         "name": name,
         "email": email,
@@ -79,4 +111,14 @@ def parse_resume_text(text: str):
         "experience": experience,
         "total_experience_years": None
     }
+
+    print("---- DEBUG RESUME PARSER ----")
+    print("Name:", name)
+    print("Email:", email)
+    print("Phone:", phone)
+    print("Skills:", skills)
+    print("Education:", education[:2])
+    print("Experience:", experience[:2])
+    print("-----------------------------")
+
     return parsed

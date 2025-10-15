@@ -49,6 +49,8 @@ async def upload_resume(file: UploadFile = File(...), job_description: str = For
 
     try:
         text = extract_text_from_pdf_bytes(content)
+        print("\n🧾 Extracted PDF text length:", len(text))
+        print("🧾 First 500 chars of text:", text[:500])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF parsing failed: {e}")
 
@@ -81,24 +83,43 @@ async def upload_resume(file: UploadFile = File(...), job_description: str = For
         # fallback scoring if Gemini fails
         jd_lower = job_description.lower()
         resume_lower = text.lower()
-        matched = [word for word in jd_lower.split() if word in resume_lower]
-        missing = [word for word in jd_lower.split() if word not in resume_lower]
-        score_val = round(len(matched) / len(jd_lower.split()) * 100, 2)
+
+        jd_keywords = [w for w in jd_lower.split() if len(w) > 3]  # filter out short words
+        matched = [word for word in jd_keywords if word in resume_lower]
+        missing = [word for word in jd_keywords if word not in resume_lower]
+
+        score_val = round((len(matched) / (len(jd_keywords) or 1)) * 100, 2)
         score_result = {
             "score": score_val,
-            "matched_skills": matched,
-            "missing_skills": missing,
-            "justification": [f"Matched {len(matched)} / {len(jd_lower.split())} keywords."],
+            "matched_skills": matched[:25],  # top matches
+            "missing_skills": missing[:25],
+            "justification": [f"Matched {len(matched)} of {len(jd_keywords)} relevant keywords."],
             "evidence": [],
             "error": f"Gemini scoring failed: {str(e)}"
         }
+        # jd_lower = job_description.lower()
+        # resume_lower = text.lower()
+        # matched = [word for word in jd_lower.split() if word in resume_lower]
+        # missing = [word for word in jd_lower.split() if word not in resume_lower]
+        # score_val = round(len(matched) / len(jd_lower.split()) * 100, 2)
+        # score_result = {
+        #     "score": score_val,
+        #     "matched_skills": matched,
+        #     "missing_skills": missing,
+        #     "justification": [f"Matched {len(matched)} / {len(jd_lower.split())} keywords."],
+        #     "evidence": [],
+        #     "error": f"Gemini scoring failed: {str(e)}"
+        # }
 
     await resumes_col.update_one(
         {"_id": ObjectId(resume_id)},
         {"$push": {"scores": score_result}}
     )
+    print("DEBUG: Extracted PDF text length =", len(text))
 
     return {"id": resume_id, "parsed": parsed, "score_result": score_result}
+
+
 
 @app.post("/score/{resume_id}")
 async def score_resume(resume_id: str, job_description: str, background_tasks: BackgroundTasks):

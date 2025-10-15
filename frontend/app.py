@@ -32,19 +32,34 @@ if uploaded_file and job_description:
 
                 if response.status_code == 200:
                     result = response.json()
-                    st.success("✅ Resume analyzed successfully!")
-                    
-                    # Display parsed data
-                    st.subheader("📊 Parsed Resume Data")
-                    st.json(result.get("parsed_resume", {}))
 
-                    # Display score
-                    st.subheader("🎯 Screening Score")
-                    score = result.get("score", None)
-                    if score:
-                        st.metric(label="AI Match Score", value=f"{score} / 100")
+                    st.success("✅ Resume analyzed successfully!")
+
+                    parsed = result.get("parsed", {})
+                    st.subheader("📊 Parsed Resume Data")
+                    if parsed:
+                        st.json(parsed)
                     else:
-                        st.info("Score not available — check backend scoring logic.")
+                        st.warning("Parsed data not available — check backend response.")
+
+                    score_data = result.get("score_result", {})
+                    st.subheader("🎯 Screening Score")
+
+                    if "score" in score_data:
+                        st.write(f"**Score:** {score_data['score']} / 100")
+                    else:
+                        st.warning("Score not available — check backend scoring logic.")
+
+                    if score_data.get("justification"):
+                        st.write("**Justification:**")
+                        for j in score_data["justification"]:
+                            st.write(f"- {j}")
+                    if score_data.get("matched_skills"):
+                        st.write("**✅ Matched Skills:**", ", ".join(score_data["matched_skills"]))
+
+                    if score_data.get("missing_skills"):
+                        st.write("**⚠️ Missing Skills:**", ", ".join(score_data["missing_skills"]))
+
                 else:
                     st.error(f"❌ Backend error: {response.text}")
 

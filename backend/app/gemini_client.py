@@ -12,17 +12,19 @@ GEMINI_ENDPOINT = os.getenv(
 )
 
 PROMPT_TEMPLATE = """
-You are an AI recruiter. Compare the given resume with the job description and
-evaluate how well the resume matches the job requirements.
+You are an expert AI recruiter. Compare the candidate's resume and the given job description.
+Evaluate based on **skills, education, experience, and project relevance**.
 
-Return *only strict JSON* in this format:
+Return a **strict JSON** in this format:
 {
   "score": number (0-100),
-  "justification": [list of short reasons for the score],
-  "matched_skills": [list of overlapping skills or keywords],
-  "missing_skills": [list of key skills missing from the resume],
-  "evidence": [list of resume phrases that support the match]
+  "justification": ["short bullet points"],
+  "matched_skills": ["skills or keywords found in both"],
+  "missing_skills": ["skills missing from resume but present in job description"],
+  "evidence": ["phrases from resume supporting the match"]
 }
+
+Base your score mainly on **semantic similarity**, not word count.
 
 Resume Data:
 {parsed_resume_json}
