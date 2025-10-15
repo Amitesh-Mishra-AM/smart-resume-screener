@@ -153,9 +153,3 @@ If you run into an error you can't resolve, paste the full traceback (the termin
 - Improve skill extraction with a curated skills database and fuzzy matching.
 - Add authentication and an admin UI for scoring and results.
 - Add Dockerfile and docker-compose for quick local setup (Mongo + app).
-
-## License / Author
-
-Small personal project — adjust license as needed.
-# smart-resume-screener
-
